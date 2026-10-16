@@ -1,0 +1,11 @@
+dist/
+output/
+build/
+__pycache__/
+*.py[cod]
+*.apk
+*.jks
+*.pass
+*.key
+.env*
+.DS_Store

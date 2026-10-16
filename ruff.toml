@@ -1,0 +1,4 @@
+target-version = "py39"
+[lint]
+select = ["E9", "F", "B", "PLE", "W6"]
+ignore = ["B904", "B905", "B007"]

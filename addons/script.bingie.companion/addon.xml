@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<addon id="script.bingie.companion" name="Bingie Companion" version="0.1.0" provider-name="glasgowm148">
+  <requires><import addon="xbmc.python" version="3.0.0" /></requires>
+  <extension point="xbmc.python.script" library="default.py" />
+  <extension point="xbmc.python.pluginsource" library="default.py"><provides>video</provides></extension>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Optional voice, guide, profile and Continue Watching controls for Bingie.</summary>
+    <description lang="en_GB">Reusable navigation and profile-local widgets. No accounts, playlists or content providers are bundled. Android voice input needs the separate voice helper and Kodi Manager.</description>
+    <platform>all</platform><license>MIT</license>
+    <source>https://github.com/glasgowm148/bingie-companion</source>
+  </extension>
+</addon>

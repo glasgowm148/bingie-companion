@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<settings>
+  <category label="Voice search">
+    <setting id="voice_enabled" type="bool" label="Enable Android voice helper" default="false" />
+    <setting id="voice_package" type="text" label="Android voice helper package" default="io.github.glasgowm148.kodivoice" />
+  </category>
+  <category label="Continue Watching (this Kodi profile only)">
+    <setting type="lsep" label="Choose resumable video folders from add-ons you already use. No sources are enabled by default." />
+    <setting id="source1" type="text" label="Video folder URL 1" default="" />
+    <setting id="source2" type="text" label="Video folder URL 2" default="" />
+    <setting id="source3" type="text" label="Video folder URL 3" default="" />
+  </category>
+</settings>

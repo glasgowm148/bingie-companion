@@ -1,0 +1,118 @@
+# Bingie Companion
+
+Optional, reusable companions for [Bingie Experience](https://github.com/glasgowm148/skin.bingie).
+The skin owns its controls; these packages provide Android voice input, guide navigation and
+profile-local widgets. No accounts, channel lists, personal profiles or content providers are bundled.
+
+**0.1.0 beta candidate.** Source tests and an Android compile are available; these extracted packages
+have not yet been installed or visually validated on the reference Shield. Existing household
+installations and their voice app remain unchanged.
+
+| Package | Use |
+| --- | --- |
+| `script.bingie.companion` 0.1.0 | On-screen voice action/setup, guide day picker, configurable PVR rows, native profile-screen fallback on Kodi 21, and optional Continue Watching widgets |
+| `io.github.glasgowm148.kodivoice` 0.1.0 | Android voice app with private on-TV configuration and speech-provider feedback |
+| `script.kodi.live.tv` 1.3.0 | Advanced two-profile coordinator extracted from existing code; requires the reviewed cooperative shutdown/relaunch setup described below |
+
+## Install the Kodi companion
+
+1. Install the `script.bingie.companion-0.1.0.zip` release asset through Kodi's **Install from zip file**.
+2. Install Bingie Experience 2.0.2.16 or later. Existing navigation-helper installations retain priority.
+3. Enable only the features you want in **Configure Skin → Experience options** or **Search**.
+   Without the companion, normal typed search, Kodi's guide and the skin's standard controls remain.
+
+For channel rows, choose **Choose channel rows** in Experience options. The picker uses the paths
+returned by Kodi, including the actual group identifier. Cancelling leaves all rows unchanged.
+Settings are per Kodi profile. **Family mode** displays only the explicitly chosen rows and hides
+unrestricted channel/history rows; missing configuration leaves those rows empty. It is a UI filter,
+not a substitute for Kodi profile locks or your PVR client's access controls.
+
+## Voice search
+
+Requirements: Android API 26+, a microphone and installed speech-recognition service, and
+[Kodi Manager](https://github.com/glasgowm148/kodi-manager) 0.7.42+ on the same TV. A speech provider
+may need an internet connection. Other platforms keep typed search.
+
+1. Install `kodivoice-0.1.0.apk` on the TV. The public app has its own package ID; it does not replace
+   an existing custom voice app or change the system assistant.
+2. Open **Kodi voice search setup** on the TV. Enter Kodi Manager's port and token privately there,
+   then save. The token stays in the app's private storage; it is not included in backups or logs.
+3. In the Kodi companion settings, enable the Android voice helper. In Bingie's Search settings,
+   enable **Show voice search button**. Choose **Search by voice** above the search keyboard.
+4. Allow the microphone when Android asks. Listening, partial recognition and errors appear in the
+   voice overlay; the final words populate Bingie's existing search results through Kodi Manager.
+   Cancelling or a recognition failure leaves typed search intact. Starting from the on-screen mic
+   never changes your assistant role.
+
+The remote's physical mic button is a separate opt-in: select this app as Android's assistant if
+your TV supports that choice. On Shield firmware that only exposes this through ADB, an experienced
+owner can use `adb shell cmd role add-role-holder android.app.role.ASSISTANT
+io.github.glasgowm148.kodivoice 0`. Record your previous assistant before changing it and restore that
+choice to undo. No installer or skin code grants permissions or takes this role automatically.
+
+**Speech privacy:** audio is handled by the selected Android speech provider, commonly Google's
+service, and may be transmitted to that provider. Recognized text goes to Kodi Manager on
+`127.0.0.1` with bearer authentication. This project does not operate a speech or telemetry service.
+Do not put tokens in issue reports, screenshots or chat. The setup screen blocks screenshots.
+
+Existing custom helper packages can be selected in Companion settings. They retain their own setup
+procedure. Do not uninstall or replace a working helper during a skin-only upgrade.
+
+## Continue Watching
+
+Add the widget folder:
+
+```text
+plugin://script.bingie.companion/?mode=continue
+```
+
+In this add-on's settings, configure up to three video-folder URLs from add-ons you already use
+(`plugin://` or `videodb://`). Each source must already provide the appropriate Continue Watching
+listing. No source is selected automatically. Requests run those add-ons' directory handlers.
+Original playback URLs and resume points are retained. Duplicates prefer a resumable item; completed
+items without a resume point are omitted. A failed source does not erase another source's results.
+If every configured source fails, the directory reports failure rather than caching a false empty list.
+The add-on never imports another profile's settings or watch history.
+
+## Advanced profile coordinator
+
+`script.kodi.live.tv` is optional and retains the existing helper ID for compatible integrations.
+Do not install it over an existing customized helper merely to get voice search; the main companion
+does not need it. Back up the existing helper and its add-on data before any deliberate replacement.
+
+Its cooperative profile-switch protocol is reused from the maintained navigation code. It expects
+compatible participating add-ons to acknowledge shutdown; missing acknowledgements cancel the switch.
+On Android Kodi 22.0-BETA2/RC1 it also requires the separately built, privately configured
+[profile-relaunch kit](https://github.com/glasgowm148/nvidia-MCP/tree/main/contrib/profile-relaunch).
+No launcher token or helper signing key is shipped here. Locked profiles are refused by the relaunch
+path. Other Kodi 22 builds are refused until reviewed; native profile loading is never attempted there.
+Playback must be stopped first. The ordinary companion preserves an existing coordinator and otherwise
+uses Kodi's native login screen on Kodi 21; on unsupported builds it explains the limitation and cancels.
+
+Provider/account patches, IPTV relay startup checks and reliability diagnostics remain outside these
+packages. The guide and day picker work with the PVR client configured by the owner.
+
+## Build and validate
+
+Python 3.9+; no third-party Python packages are needed for unit tests or Kodi ZIP builds:
+
+```sh
+python -m unittest discover -s tests -q
+python scripts/build.py
+```
+
+The Android build also needs a JDK 11+ and Android SDK build-tools 34.0.0 / platform android-30:
+
+```sh
+python android/voice-search/build.py --sdk /path/to/android-sdk --java-home /path/to/jdk
+```
+
+Kodi ZIPs and checksums go into `dist/`; the APK and checksum go into `output/voice-search/`.
+The voice app's signing key is generated outside the repository in
+`~/.local/share/bingie-companion/signing/`. Keep it privately for future signed updates.
+CI-generated APKs use disposable keys and are compile checks, not release updates.
+The advanced coordinator's client DEX and Java/shell sources are included; its matching Android
+server and build procedure live in the linked relaunch kit.
+
+MIT license. Extracted and generalized from locally maintained Kodi navigation/voice code by
+glasgowm148. The Bingie skin remains separately GPL v2 licensed with its upstream attribution.
