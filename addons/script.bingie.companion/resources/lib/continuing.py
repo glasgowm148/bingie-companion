@@ -59,6 +59,7 @@ def load_rows(xbmc, addon):
             continue
         try:
             rows.append(rpc(xbmc, 'Files.GetDirectory', directory=source, media='video',
+                            limits={'start': 0, 'end': 100},
                             properties=['title', 'showtitle', 'season', 'episode', 'playcount',
                                         'resume', 'art', 'uniqueid']).get('files', []))
         except RuntimeError:
