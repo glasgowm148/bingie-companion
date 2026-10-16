@@ -34,8 +34,6 @@ import java.util.List;
 public class AssistActivity extends Activity implements RecognitionListener {
     static final String TAG = "KodiVoice";
     static final String KODI = "org.xbmc.kodi";
-    static final String EXTRA_QUERY = "query";
-    static final String EXTRA_TARGET = "target";
     private static final int ASK_MIC = 1;
     // Google's speech services, preferred over whichever Android lists first.
     private static final String[] PREFERRED = {"com.google.android.katniss", "com.google.android.tts"};
@@ -75,10 +73,7 @@ public class AssistActivity extends Activity implements RecognitionListener {
             finish();
             return;
         }
-        String query = intent.getStringExtra(EXTRA_QUERY);
-        if (query != null && !query.trim().isEmpty()) {
-            deliver(query.trim());
-        } else if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             show("Allow the microphone to search by voice", "");
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, ASK_MIC);
         } else {
@@ -86,12 +81,8 @@ public class AssistActivity extends Activity implements RecognitionListener {
         }
     }
 
-    /** The app that was in front: the assist extra, or an explicit "target" (adb, tests). */
+    /** The app that was in front, supplied by Android's assist flow. */
     static String targetOf(Intent intent) {
-        String explicit = intent.getStringExtra(EXTRA_TARGET);
-        if (explicit != null && !explicit.isEmpty()) {
-            return explicit;
-        }
         return intent.getStringExtra(Intent.EXTRA_ASSIST_PACKAGE);
     }
 

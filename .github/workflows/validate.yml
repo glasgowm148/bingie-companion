@@ -25,5 +25,14 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - run: sdkmanager 'build-tools;34.0.0' 'platforms;android-30'
+      - name: Install pinned Android platform
+        shell: bash
+        run: |
+          sdk_manager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$sdk_manager" ]; then
+            for candidate in "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager; do
+              if [ -x "$candidate" ]; then sdk_manager="$candidate"; fi
+            done
+          fi
+          "$sdk_manager" --sdk_root="$ANDROID_HOME" 'build-tools;34.0.0' 'platforms;android-30'
       - run: python3 android/voice-search/build.py --sdk "$ANDROID_HOME" --java-home "$JAVA_HOME"

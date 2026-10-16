@@ -43,7 +43,7 @@
                 <action android:name="android.intent.action.ASSIST" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-            <!-- From Kodi (StartAndroidActivity) or adb; extra "query" skips listening. -->
+            <!-- Explicit listening action from Kodi; exported callers cannot inject query text. -->
             <intent-filter>
                 <action android:name="io.github.glasgowm148.kodivoice.LISTEN" />
                 <category android:name="android.intent.category.DEFAULT" />
