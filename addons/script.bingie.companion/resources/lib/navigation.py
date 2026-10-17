@@ -1,8 +1,9 @@
 """Guide/day navigation extracted from the private navigation helper, without its IPTV setup."""
 import datetime
 import re
+from urllib.parse import unquote
 
-from .common import rpc, skin_string
+from .common import skin_string
 
 
 def choose_day(xbmc, dialog, now=None):
@@ -18,12 +19,19 @@ def choose_day(xbmc, dialog, now=None):
     xbmc.executebuiltin('SetFocus(10)')
 
 
-def configure_rows(xbmc, dialog):
+def configure_rows(xbmc, dialog, vfs=None):
     """Use actual Kodi directory paths; never derive a path from a group label or guess its ID."""
-    rows = rpc(xbmc, 'Files.GetDirectory', directory='pvr://channels/tv/', media='files').get('files', [])
-    rows = [r for r in rows if r.get('filetype') == 'directory'
-            and str(r.get('file', '')).startswith('pvr://channels/tv/')
-            and '*' not in r['file'] and not any(c in r['file'] for c in '\r\n')]
+    # JSON-RPC's RemoteAccessAllowed rejects pvr:// even inside an add-on. Local VFS gives
+    # the actual encoded directory names (including client IDs), without inventing paths.
+    if vfs is None:
+        import xbmcvfs as vfs
+    directories, _ = vfs.listdir('pvr://channels/tv/')
+    rows = [{'file': 'pvr://channels/tv/' + name + '/',
+             'label': unquote(name.rsplit('@', 1)[0])}
+            for name in directories if isinstance(name, str) and name
+            and not any(c in name for c in '/\\')
+            and not any(c in unquote(name) for c in '*\r\n')
+            and unquote(name) not in ('.', '..')]
     if not rows:
         dialog.ok('Channel rows', 'No channel groups were returned by Kodi. Configure your PVR client first.')
         return

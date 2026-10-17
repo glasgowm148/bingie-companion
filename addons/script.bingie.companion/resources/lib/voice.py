@@ -21,8 +21,9 @@ def run(mode, xbmc, addon, dialog, window):
                   'Speech uses your Android recognition provider; it may send audio to its service.')
         if android and valid and package == 'io.github.glasgowm148.kodivoice' and dialog.yesno(
                 'Voice search setup', 'Open the Android helper setup? Choose No to edit Companion settings.'):
-            xbmc.executebuiltin('StartAndroidActivity(%s,%s)' %
-                                (json.dumps(package), json.dumps('android.intent.action.MAIN')))
+            # Kodi resolves the app's explicit launcher/leanback component when intent is empty.
+            # An implicit MAIN intent can fail because launcher filters lack CATEGORY_DEFAULT.
+            xbmc.executebuiltin('StartAndroidActivity(%s)' % json.dumps(package))
         else:
             addon.openSettings()
         return

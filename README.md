@@ -4,25 +4,24 @@ Optional, reusable companions for [Bingie Experience](https://github.com/glasgow
 The skin owns its controls; these packages provide Android voice input, guide navigation and
 profile-local widgets. No accounts, channel lists, personal profiles or content providers are bundled.
 
-**0.1.0 beta candidate.** Source tests and an Android compile are available; these extracted packages
-have not yet been installed or visually validated on the reference Shield. Existing household
-installations and their voice app remain unchanged.
+**0.1.1 beta candidate.** The Kodi companion is separate from the Android app and advanced
+coordinator; their versions are listed below. Manual speech-recognition acceptance is still required.
 
 | Package | Use |
 | --- | --- |
-| `script.bingie.companion` 0.1.0 | On-screen voice action/setup, guide day picker, configurable PVR rows, native profile-screen fallback on Kodi 21, and optional Continue Watching widgets |
+| `script.bingie.companion` 0.1.1 | On-screen voice action/setup, guide day picker, configurable PVR rows, native profile-screen fallback on Kodi 21, and optional Continue Watching widgets |
 | `io.github.glasgowm148.kodivoice` 0.1.0 | Android voice app with private on-TV configuration and speech-provider feedback |
 | `script.kodi.live.tv` 1.3.0 | Advanced two-profile coordinator extracted from existing code; requires the reviewed cooperative shutdown/relaunch setup described below |
 
 ## Install the Kodi companion
 
-1. Install the `script.bingie.companion-0.1.0.zip` release asset through Kodi's **Install from zip file**.
+1. Install the `script.bingie.companion-0.1.1.zip` release asset through Kodi's **Install from zip file**.
 2. Install Bingie Experience 2.0.2.16 or later. Existing navigation-helper installations retain priority.
 3. Enable only the features you want in **Configure Skin → Experience options** or **Search**.
    Without the companion, normal typed search, Kodi's guide and the skin's standard controls remain.
 
 For channel rows, choose **Choose channel rows** in Experience options. The picker uses the paths
-returned by Kodi, including the actual group identifier. Cancelling leaves all rows unchanged.
+returned by Kodi's local VFS, including the actual group identifier. Cancelling leaves all rows unchanged.
 Settings are per Kodi profile. **Family mode** displays only the explicitly chosen rows and hides
 unrestricted channel/history rows; missing configuration leaves those rows empty. It is a UI filter,
 not a substitute for Kodi profile locks or your PVR client's access controls.

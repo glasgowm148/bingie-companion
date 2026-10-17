@@ -73,27 +73,35 @@ class NavigationTests(unittest.TestCase):
         self.assertEqual(kodi.actions, [])
 
     def test_cancelled_channel_wizard_preserves_all_existing_rows(self):
-        kodi = Kodi(replies={'pvr://channels/tv/': {'files': [
-            {'filetype': 'directory', 'label': 'Example group', 'file': 'pvr://channels/tv/Example@7/'}]}})
+        kodi = Kodi()
+        vfs = types.SimpleNamespace(listdir=Mock(return_value=(['Example@7'], [])))
         dialog = Mock()
         dialog.select.side_effect = [2, -1]
-        navigation.configure_rows(kodi, dialog)
+        navigation.configure_rows(kodi, dialog, vfs)
         self.assertEqual(kodi.actions, [])
+        vfs.listdir.assert_called_once_with('pvr://channels/tv/')
+        self.assertEqual(kodi.calls, [])  # PVR directories are unavailable through JSON-RPC.
 
     def test_rows_use_returned_paths_and_ignore_unrestricted_wildcards(self):
         path = 'pvr://channels/tv/Example%20group@7/'
-        kodi = Kodi(replies={'pvr://channels/tv/': {'files': [
-            {'filetype': 'directory', 'label': 'All', 'file': 'pvr://channels/tv/*'},
-            {'filetype': 'directory', 'label': 'Example group', 'file': path}]}})
+        kodi = Kodi()
+        vfs = types.SimpleNamespace(listdir=lambda _: (['*', 'Example%20group@7', '../bad', '%2A'], []))
         dialog = Mock()
         dialog.select.side_effect = [2, 0, 1]
-        navigation.configure_rows(kodi, dialog)
+        navigation.configure_rows(kodi, dialog, vfs)
         self.assertIn('Skin.SetString(KM_PVRRow1Path,"%s")' % path, kodi.actions)
         self.assertIn('Skin.SetString(KM_PVRRow2Path,"")', kodi.actions)
         self.assertFalse(any('KM_PVRRow3' in action for action in kodi.actions))
 
 
 class VoiceTests(unittest.TestCase):
+    def test_setup_uses_the_explicit_launcher_resolved_by_kodi(self):
+        kodi = Kodi(['System.Platform.Android'])
+        dialog = Mock()
+        dialog.yesno.return_value = True
+        voice.run('voice-setup', kodi, addon(), dialog, Mock())
+        self.assertEqual(kodi.actions, ['StartAndroidActivity("io.github.glasgowm148.kodivoice")'])
+
     def test_voice_uses_only_validated_package_and_explicit_listen_action(self):
         kodi = Kodi(['System.Platform.Android'])
         voice.run('voice', kodi, addon(), Mock(), Mock())
