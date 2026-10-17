@@ -21,6 +21,12 @@ Observed on the reference TV:
 - Both existing profiles retain their channel configuration and family-mode choices through the
   existing coordinator's restart path. The extracted advanced coordinator 1.3.0 was not installed
   over that working helper; its validation remains source/fake-Kodi based.
+- An adult-only source and voice opt-in were absent from the other profile. The newly installed
+  companion was disabled there by default; it was temporarily enabled to verify its unconfigured
+  Continue Watching directory was empty, then returned to its previous disabled state.
+- A local video passed play, pause, resume, OSD opening, Back from the OSD retaining pause, and
+  Back from fullscreen stopping playback. The test video and temporary source/search data were
+  removed, and the starting profile was restored on Home.
 
 Still requires a human with the remote: spoken recognition, partial/final words, recognition timeout,
 physical microphone behavior and delivery from recognized speech. Microphone access was cancelled

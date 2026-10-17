@@ -19,6 +19,11 @@ coordinator; their versions are listed below. Manual speech-recognition acceptan
 2. Install Bingie Experience 2.0.2.16 or later. Existing navigation-helper installations retain priority.
 3. Enable only the features you want in **Configure Skin → Experience options** or **Search**.
    Without the companion, normal typed search, Kodi's guide and the skin's standard controls remain.
+   Enable the Kodi companion separately in each profile where you want it; other profiles keep
+   their existing fallback and voice choices.
+
+See [reference Shield validation](docs/runtime-validation.md) for the tested behavior and the
+remaining spoken-recognition acceptance checks.
 
 For channel rows, choose **Choose channel rows** in Experience options. The picker uses the paths
 returned by Kodi's local VFS, including the actual group identifier. Cancelling leaves all rows unchanged.
