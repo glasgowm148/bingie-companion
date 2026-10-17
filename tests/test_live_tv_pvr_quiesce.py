@@ -1,4 +1,7 @@
-"""script.kodi.live.tv: the Live TV barrier before a direct (Kodi 22 final) account switch reads kodi.log."""
+"""script.kodi.live.tv: the Live TV barrier before a direct (Kodi 21 and earlier) account switch.
+
+It disables whichever PVR client add-ons are enabled and reads kodi.log for the PVR Manager state.
+"""
 import json
 from pathlib import Path
 import sys
@@ -33,6 +36,7 @@ class QuiesceTests(unittest.TestCase):
         self.xbmc, self.gui, self.vfs = fakes.kodi(self.root, profile="Adults", build=fakes.FINAL)
         self.log = self.root / "log" / "kodi.log"
         self.toggles, self.clock, self.on_sleep = [], [0.0], None
+        self.clients = [{"addonid": "pvr.iptvsimple", "type": "kodi.pvrclient"}]
         self.xbmc.executeJSONRPC = self.rpc
 
         def sleep(ms):
@@ -51,13 +55,16 @@ class QuiesceTests(unittest.TestCase):
     def rpc(self, request):
         request = json.loads(request)
         self.xbmc.rpc.append(request["method"])
-        if request["method"] == "Addons.GetAddonDetails":
-            return json.dumps({"result": {"addon": {"enabled": True}}})
+        if request["method"] == "Addons.GetAddons":
+            self.assertEqual(request["params"], {"type": "kodi.pvrclient", "enabled": True})
+            if self.clients is None:
+                return json.dumps({"error": {"code": -32602}})
+            return json.dumps({"result": {"addons": self.clients} if self.clients else {"limits": {"total": 0}}})
         if request["method"] == "Settings.GetSettingValue":
             return json.dumps({"result": {"value": False}})
         if request["method"] == "Addons.SetAddonEnabled":
             self.toggles.append((request["params"]["addonid"], request["params"]["enabled"]))
-            if request["params"]["addonid"] == "pvr.iptvsimple" and not request["params"]["enabled"]:
+            if request["params"]["addonid"] == self.clients[-1]["addonid"] and not request["params"]["enabled"]:
                 with open(self.log, "ab") as stream:   # Kodi stops the PVR manager
                     stream.write(b"... PVR Manager: Stopping\n... PVR Manager: Stopped\n")
             return json.dumps({"result": "OK"})
@@ -115,6 +122,38 @@ class QuiesceTests(unittest.TestCase):
         first = sum(size for size in reads[:self.switch.LOG_SCAN_LIMIT // self.switch.LOG_CHUNK + 1])
         self.assertLessEqual(first, self.switch.LOG_SCAN_LIMIT + 2 * self.switch.LOG_CHUNK)
         self.assertLessEqual(sum(reads), first + 64 * len(reads))    # later polls read only new lines
+
+    def test_no_pvr_client_installed_or_enabled_needs_no_barrier(self):
+        for clients in ([], None):                                    # empty reply, or a refused request
+            with self.subTest(clients=clients):
+                self.clients = clients
+                self.switch.quiesce_pvr("Kids")                       # no Addons.GetAddonDetails error
+                self.assertEqual(self.toggles, [])
+                self.assertNotIn("Addons.GetAddonDetails", self.xbmc.rpc)
+                self.assertFalse(Path(self.switch.pvr_journal_path()).exists())
+                self.assertTrue(self.switch.restore_pvr(cancelled=True))
+
+    def test_every_enabled_pvr_client_is_paused_and_restored(self):
+        self.clients = [{"addonid": "pvr.hts"}, {"addonid": "pvr.iptvsimple"}]
+        self.log.write_bytes(STARTED)
+        self.switch.quiesce_pvr("Kids")
+        self.assertEqual(self.toggles, [("pvr.hts", False), ("pvr.iptvsimple", False)])
+        saved = json.loads(Path(self.switch.pvr_journal_path()).read_text())
+        self.assertEqual(saved["addons"], ["pvr.hts", "pvr.iptvsimple"])
+        self.toggles.clear()
+        self.assertTrue(self.switch.restore_pvr(cancelled=True))
+        self.assertEqual(self.toggles, [("pvr.hts", True), ("pvr.iptvsimple", True)])
+        self.assertFalse(Path(self.switch.pvr_journal_path()).exists())
+
+    def test_journal_from_1_3_0_restores_iptv_simple(self):
+        journal = Path(self.switch.pvr_journal_path())
+        journal.parent.mkdir(parents=True, exist_ok=True)
+        journal.write_text(json.dumps({"enabled": True, "pid": 1, "target": "Kids", "created": 0}))
+        self.assertTrue(self.switch.restore_pvr())
+        self.assertEqual(self.toggles, [("pvr.iptvsimple", True)])
+        journal.write_text(json.dumps({"enabled": True, "addons": ["x),Quit("]}))
+        with self.assertRaises(ValueError):
+            self.switch.restore_pvr(cancelled=True)
 
     def test_direct_switch_on_unreviewed_kodi22_is_refused_before_mutations(self):
         with self.assertRaisesRegex(RuntimeError, 'not reviewed'):

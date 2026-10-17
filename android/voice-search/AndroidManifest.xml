@@ -7,8 +7,8 @@
      when that app has one, e.g. SmartTube). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="io.github.glasgowm148.kodivoice"
-    android:versionCode="1"
-    android:versionName="0.1.0">
+    android:versionCode="2"
+    android:versionName="0.1.1">
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="30" />
 
@@ -38,17 +38,27 @@
             android:launchMode="singleTask"
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar">
-            <!-- The mic button, once this app holds the ASSISTANT role. -->
-            <intent-filter>
-                <action android:name="android.intent.action.ASSIST" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <!-- Explicit listening action from Kodi; exported callers cannot inject query text. -->
+            <!-- From the skin or companion (Kodi's StartAndroidActivity). Any app may start this, so
+                 the app ignores EXTRA_ASSIST_PACKAGE here and the words always go to Kodi Manager. -->
             <intent-filter>
                 <action android:name="io.github.glasgowm148.kodivoice.LISTEN" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- The mic button, once this app holds the ASSISTANT role. Android starts the assistant from
+             system_server with its identity cleared, which holds DUMP; ordinary apps do not, so only
+             this entry point's EXTRA_ASSIST_PACKAGE (the app in front) is trusted. -->
+        <activity-alias
+            android:name=".SystemAssist"
+            android:targetActivity=".AssistActivity"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
 
         <activity android:name=".ConfigActivity" android:exported="true" android:label="Kodi voice search setup" android:theme="@android:style/Theme.Material.NoActionBar">
             <intent-filter>

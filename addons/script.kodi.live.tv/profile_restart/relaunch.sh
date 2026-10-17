@@ -2,7 +2,11 @@
 # Android owns the one-shot launch. A child is killed with Kodi on this Shield,
 # Preserve the requested next-start profile when Android backgrounds Kodi,
 # then reapply it after Kodi's own save. Android may reclaim a large process
-# between those two events; the navigation destination must survive that too.
+# between those two events; the navigation destination must survive that too,
+# and so must the reopen: right after ARM the helper also schedules a late
+# reopen (ARMWATCH, helper 1.3+) that READY replaces with the prompt one. If the
+# low-memory killer takes Kodi (and this child with it) after the activity
+# finished, that late reopen still brings Kodi back.
 pid=$1
 index=$2
 profiles=$3
@@ -17,6 +21,18 @@ prepared=0
 cancel() {
     [ "$completed" = 1 ] || CLASSPATH="$dex" /system/bin/app_process /system/bin KodiProfileLauncher cancel "$token" >/dev/null 2>&1
 }
+# Kodi died before READY (this child outlived it): reopen now rather than cancel.
+orphaned() {
+    completed=1
+    CLASSPATH="$dex" /system/bin/app_process /system/bin KodiProfileLauncher ready "$token" > "$status.ready.log" 2>&1
+    if /system/bin/toybox grep -q '^launch_scheduled$' "$status.ready.log"; then
+        printf '{"phase":"reopened_after_kodi_died","pid":%s,"index":%s}\n' "$pid" "$index" > "$status"
+        exit 0
+    fi
+    # Not accepted (lease expired, helper missing): the late reopen, if any, stays scheduled.
+    printf '{"phase":"kodi_died","pid":%s,"index":%s}\n' "$pid" "$index" > "$status"
+    exit 1
+}
 trap cancel EXIT
 trap 'exit 1' TERM INT
 # Each number on its own: an empty index would otherwise write <lastloaded></lastloaded>.
@@ -27,12 +43,15 @@ done
 umask 077
 CLASSPATH="$dex" /system/bin/app_process /system/bin KodiProfileLauncher arm "$token" > "$status.launch.log" 2>&1 || exit 1
 /system/bin/toybox grep -q '^handoff_armed$' "$status.launch.log" || exit 1
+# Best effort: ARMWATCH renews the lease and adds the late reopen in one step. Helpers before
+# 1.3 refuse it without changing anything, which leaves the plain ARM above in force.
+CLASSPATH="$dex" /system/bin/app_process /system/bin KodiProfileLauncher armwatch "$token" > "$status.watch.log" 2>&1
 printf '{"phase":"waiting_saved","pid":%s,"index":%s}\n' "$pid" "$index" > "$status"
 i=0
 while [ "$i" -lt 400 ]; do
     IFS= read -r proc_stat < /proc/self/stat || exit 1
     proc_fields=${proc_stat##*) }; set -f; set -- $proc_fields
-    [ "$2" = "$pid" ] || exit 1
+    [ "$2" = "$pid" ] || orphaned
     size=$(/system/bin/toybox stat -c %s "$log") || exit 1
     [ "$size" -ge "$offset" ] || exit 1
     if [ "$size" -gt "$offset" ]; then
@@ -66,13 +85,14 @@ while [ "$i" -lt 400 ]; do
             # stopped Python services. Avoid NVIDIA graphics/PVR final teardown.
             IFS= read -r proc_stat < /proc/self/stat || exit 1
             proc_fields=${proc_stat##*) }; set -- $proc_fields
-            [ "$2" = "$pid" ] || exit 1
+            [ "$2" = "$pid" ] || orphaned
             CLASSPATH="$dex" /system/bin/app_process /system/bin KodiProfileLauncher ready "$token" > "$status.ready.log" 2>&1 || exit 1
             /system/bin/toybox grep -q '^launch_scheduled$' "$status.ready.log" || exit 1
-            # Recheck the parent after the acknowledged handoff too.
+            # Recheck the parent after the acknowledged handoff too. If Kodi already
+            # died, the scheduled launch reopens it: keep it.
             IFS= read -r proc_stat < /proc/self/stat || exit 1
             proc_fields=${proc_stat##*) }; set -- $proc_fields
-            [ "$2" = "$pid" ] || exit 1
+            [ "$2" = "$pid" ] || { completed=1; exit 0; }
             printf '{"phase":"profile_saved","pid":%s,"index":%s,"termination":"saved_settings_and_services_stopped"}\n' "$pid" "$index" > "$status"
             completed=1
             kill -KILL "$pid" || { completed=0; exit 1; }

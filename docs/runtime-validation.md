@@ -35,3 +35,6 @@ permissions. Kodi 21 and other Kodi 22 builds were not validated on this device.
 
 Automated validation remains separate: 47 Python tests, deterministic Kodi ZIPs, and an Android
 SDK compile/signature check. See the workflow results for each exact revision.
+
+Kodi companion 0.1.2, advanced coordinator 1.3.1 and Android voice app 0.1.1 have not yet been
+validated on the reference TV. Their changes are covered by fake-Kodi unit tests only (65 Python tests).

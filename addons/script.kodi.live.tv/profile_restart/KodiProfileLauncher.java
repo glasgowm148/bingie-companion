@@ -14,7 +14,8 @@ import java.util.concurrent.TimeUnit;
 /** Ask the offline handoff app to reopen Kodi; no shell identity or remote API. */
 public final class KodiProfileLauncher {
     public static void main(String[] args) throws Exception {
-        if (args.length != 2 || !("arm".equals(args[0]) || "cancel".equals(args[0]) || "ready".equals(args[0]))) System.exit(2);
+        if (args.length != 2 || !("arm".equals(args[0]) || "cancel".equals(args[0]) || "ready".equals(args[0])
+                || "watch".equals(args[0]) || "armwatch".equals(args[0]))) System.exit(2);
         android.os.Looper.prepareMainLooper();
         Class<?> activityThread = Class.forName("android.app.ActivityThread");
         Method create = activityThread.getDeclaredMethod("systemMain"); create.setAccessible(true);
@@ -39,6 +40,8 @@ public final class KodiProfileLauncher {
             System.out.println("relaunch_helper_unavailable"); System.exit(2);
         }
         System.out.println("arm".equals(args[0]) ? "handoff_armed" :
-            "ready".equals(args[0]) ? "launch_scheduled" : "alarm_cancelled");
+            "ready".equals(args[0]) ? "launch_scheduled" :
+            "watch".equals(args[0]) ? "relaunch_watch_scheduled" :
+            "armwatch".equals(args[0]) ? "handoff_armed_with_watch" : "alarm_cancelled");
     }
 }

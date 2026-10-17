@@ -54,6 +54,23 @@ def kodi(root, profile="Adults", build=RC1, playing=False):
             return xbmc.abort
 
     xbmc.Monitor = Monitor
+    xbmc.PLAYLIST_VIDEO = 1
+
+    class PlayList:
+        def __init__(self, kind):
+            self.kind = kind
+
+        def clear(self):
+            pass
+
+    class Player:
+        def isPlaying(self):
+            return bool(xbmc.conds.get("Player.HasMedia"))
+
+        def stop(self):
+            xbmc.conds["Player.HasMedia"] = False
+
+    xbmc.PlayList, xbmc.Player = PlayList, Player
 
     def startServer(server, enabled):
         xbmc.servers.append((server, enabled))

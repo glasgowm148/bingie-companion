@@ -3,6 +3,7 @@ package io.github.glasgowm148.kodivoice;
 import android.Manifest;
 import android.app.Activity;
 import android.app.SearchManager;
+import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -34,6 +35,9 @@ import java.util.List;
 public class AssistActivity extends Activity implements RecognitionListener {
     static final String TAG = "KodiVoice";
     static final String KODI = "org.xbmc.kodi";
+    // The ASSIST entry point (manifest alias). It needs DUMP, which the system's assist launch has
+    // and ordinary apps do not, so only its EXTRA_ASSIST_PACKAGE can be trusted.
+    static final String SYSTEM_ASSIST = "io.github.glasgowm148.kodivoice.SystemAssist";
     private static final int ASK_MIC = 1;
     // Google's speech services, preferred over whichever Android lists first.
     private static final String[] PREFERRED = {"com.google.android.katniss", "com.google.android.tts"};
@@ -43,9 +47,10 @@ public class AssistActivity extends Activity implements RecognitionListener {
     private TextView status;
     private TextView heard;
     private String target;
-    private boolean finished;
+    // Both are read by the background search thread.
+    private volatile boolean finished;
     // Each mic press is a session; work still running for an earlier one is ignored.
-    private int session;
+    private volatile int session;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -81,8 +86,16 @@ public class AssistActivity extends Activity implements RecognitionListener {
         }
     }
 
-    /** The app that was in front, supplied by Android's assist flow. */
+    /**
+     * The app that was in front, as Android's assist flow reports it. Only trusted when the intent
+     * came through the system-only ASSIST alias: any app can start the LISTEN entry point and set
+     * the extra to its own package to receive the words (and to skip the setup check).
+     */
     static String targetOf(Intent intent) {
+        ComponentName component = intent.getComponent();
+        if (component == null || !SYSTEM_ASSIST.equals(component.getClassName())) {
+            return null;
+        }
         return intent.getStringExtra(Intent.EXTRA_ASSIST_PACKAGE);
     }
 
@@ -225,11 +238,19 @@ public class AssistActivity extends Activity implements RecognitionListener {
         if (target != null && !KODI.equals(target) && !getPackageName().equals(target)) {
             Intent search = new Intent(Intent.ACTION_SEARCH).setPackage(target)
                     .putExtra(SearchManager.QUERY, text).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            if (getPackageManager().resolveActivity(search, 0) != null) {
-                Log.i(TAG, "search in " + target);
-                startActivity(search);
-                done();
-                return;
+            ResolveInfo ri = getPackageManager().resolveActivity(search, PackageManager.MATCH_DEFAULT_ONLY);
+            if (ri != null && ri.activityInfo != null && ri.activityInfo.exported
+                    && target.equals(ri.activityInfo.packageName)) {
+                search.setComponent(new ComponentName(ri.activityInfo.packageName, ri.activityInfo.name));
+                try {
+                    startActivity(search);
+                    Log.i(TAG, "search in " + target);
+                    done();
+                    return;
+                } catch (ActivityNotFoundException | SecurityException e) {
+                    // Fall back to Kodi through Kodi Manager.
+                    Log.w(TAG, "search in " + target + " failed: " + e.getClass().getSimpleName());
+                }
             }
         }
         final Config config = Config.load(this);

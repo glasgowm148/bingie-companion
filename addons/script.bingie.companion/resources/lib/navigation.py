@@ -1,21 +1,59 @@
 """Guide/day navigation extracted from the private navigation helper, without its IPTV setup."""
-import datetime
 import re
+import time
 from urllib.parse import unquote
 
-from .common import skin_string
+from .common import rpc, skin_string
+
+DEFAULT_FUTURE_DAYS, MAX_FUTURE_DAYS = 3, 7
+
+
+def future_days(xbmc):
+    """Days after today that Kodi's guide keeps (Settings → PVR → Guide → Future days to display)."""
+    try:
+        value = int(rpc(xbmc, 'Settings.GetSettingValue', setting='epg.futuredaystodisplay')['value'])
+    except (RuntimeError, KeyError, TypeError, ValueError, AttributeError):
+        value = DEFAULT_FUTURE_DAYS
+    return max(0, min(MAX_FUTURE_DAYS, value))
+
+
+def _local(now, days, clock=None):
+    """Epoch seconds of local wall-clock ``clock`` (default: now's) ``days`` calendar days after now.
+
+    time.mktime normalises the day overflow and resolves the UTC offset of that date, so a DST
+    change in between is accounted for. (datetime.strptime is avoided: it fails in Kodi's Python
+    sub-interpreters on 3.8-3.11.)
+    """
+    hour, minute, second = clock or now[3:6]
+    return time.mktime((now.tm_year, now.tm_mon, now.tm_mday + days, hour, minute, second, 0, 0, -1))
+
+
+def day_choices(xbmc, now=None):
+    """[(label, hours)] for today and each future guide day; hours moves the guide from now to the
+    same local wall-clock time on that day (23 or 25 across a DST change)."""
+    now = time.localtime(time.time() if now is None else now)
+    start = time.mktime(now)
+    choices = []
+    for days in range(future_days(xbmc) + 1):
+        # Label from midday: it exists on every date, unlike times inside a DST gap.
+        date = time.localtime(_local(now, days, (12, 0, 0)))
+        prefix = 'Today • ' if days == 0 else 'Tomorrow • ' if days == 1 else ''
+        choices.append((prefix + time.strftime('%A %d %B', date),
+                        int(round((_local(now, days) - start) / 3600.0))))
+    return choices
 
 
 def choose_day(xbmc, dialog, now=None):
-    now = now or datetime.datetime.now()
-    # Kodi's guide clamps dates to available EPG data; no direct database/schema dependency.
-    dates = [now + datetime.timedelta(days=i) for i in range(8)]
-    choice = dialog.select('Choose a day', [d.strftime('%A %d %B') for d in dates])
-    if choice < 0:
+    # Kodi's guide clamps to available EPG data; offer only the days it is configured to keep.
+    choices = day_choices(xbmc, now)
+    choice = dialog.select('Choose a day', [label for label, _ in choices])
+    if choice < 0 or choice >= len(choices):
         return
+    # "+N" moves N hours from the guide's selected time, not from now: go to now first.
     xbmc.executebuiltin('PVR.EpgGridControl(currentprogramme)')
-    if choice:
-        xbmc.executebuiltin('PVR.EpgGridControl(+%d)' % (choice * 24))
+    hours = choices[choice][1]
+    if choice and hours > 0:
+        xbmc.executebuiltin('PVR.EpgGridControl(+%d)' % hours)
     xbmc.executebuiltin('SetFocus(10)')
 
 

@@ -5,8 +5,8 @@
 
 Needs Android build-tools 34.0.0 (aapt2, d8, zipalign, apksigner), platforms;android-30
 (android.jar) and a JDK 11+ (javac --release 8). The signing key is created on first use in
-~/Library/Application Support/KodiManager/kodivoice.jks with a random password next to it
-(kodivoice.pass, mode 600); keep both, since an update must be signed with the same key.
+~/.local/share/bingie-companion/signing/kodivoice.jks (directory mode 700) with a random password
+next to it (kodivoice.pass, mode 600); keep both, since an update must be signed with the same key.
 
 Steps: aapt2 links the manifest against android.jar (no resources), javac compiles src/, d8
 dexes it, the dex is added to the APK, zipalign aligns it and apksigner signs it (v2 + v3).
@@ -35,11 +35,14 @@ def run(*cmd, **kw):
 
 
 def keystore(keytool):
-    KEY_DIR.mkdir(parents=True, exist_ok=True)
+    KEY_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     store, secret = KEY_DIR / (NAME + ".jks"), KEY_DIR / (NAME + ".pass")
     if not store.exists():
-        password = secrets.token_urlsafe(24)
-        secret.write_text(password)
+        if not secret.exists():
+            # Created 0600 from the start: never readable by others, even briefly.
+            fd = os.open(secret, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w") as out:
+                out.write(secrets.token_urlsafe(24))
         os.chmod(secret, 0o600)
         run(keytool, "-genkeypair", "-keystore", store, "-storepass:file", secret, "-keypass:file", secret,
             "-alias", NAME, "-keyalg", "RSA", "-keysize", "3072", "-validity", "10000",

@@ -1,8 +1,8 @@
 """script.kodi.live.tv restart-current: dispatch guards and the shared guarded relaunch (fakes only).
 
-Runs the add-on source in addons/script.kodi.live.tv (device_fixes/files is generated from it):
+Runs against the add-on source in addons/script.kodi.live.tv:
 
-    PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider addons/tests
+    python -m unittest discover -s tests -q
 """
 import json
 import os

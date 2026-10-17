@@ -1,4 +1,5 @@
 """Merge explicitly configured video folders without accounts or shared profile state."""
+import traceback
 from urllib.parse import urlsplit
 
 from .common import rpc
@@ -58,6 +59,8 @@ def load_rows(xbmc, addon):
             failures += 1
             continue
         try:
+            # Kodi applies ``limits`` after the source add-on has built its whole listing: this caps
+            # only the size of the reply, not the work done by that add-on or the request's duration.
             rows.append(rpc(xbmc, 'Files.GetDirectory', directory=source, media='video',
                             limits={'start': 0, 'end': 100},
                             properties=['title', 'showtitle', 'season', 'episode', 'playcount',
@@ -67,25 +70,11 @@ def load_rows(xbmc, addon):
     return merge(rows), failures
 
 
-def serve(handle, mode):
-    import xbmc
-    import xbmcaddon
-    import xbmcgui
-    import xbmcplugin
-    addon = xbmcaddon.Addon()
-    if mode == 'settings':
-        addon.openSettings()
-        xbmcplugin.endOfDirectory(handle, succeeded=True)
-        return
-    if mode != 'continue':
-        xbmcplugin.endOfDirectory(handle, succeeded=False)
-        return
-    rows, failures = load_rows(xbmc, addon)
-    xbmcplugin.setContent(handle, 'episodes')
+def add_items(xbmcgui, xbmcplugin, handle, rows):
     for row in rows:
         li = xbmcgui.ListItem(label=row.get('label') or row.get('title') or '', offscreen=True)
         li.setArt(row.get('art') or {})
-        info = li.getVideoInfoTag()
+        info = li.getVideoInfoTag()  # InfoTagVideo setters: Kodi 20+ (xbmc.python 3.0.1)
         info.setTitle(row.get('title') or row.get('label') or '')
         info.setTvShowTitle(row.get('showtitle') or '')
         for key, setter in (('season', info.setSeason), ('episode', info.setEpisode),
@@ -98,5 +87,28 @@ def serve(handle, mode):
         folder = row.get('filetype') == 'directory'
         li.setProperty('IsPlayable', 'false' if folder else 'true')
         xbmcplugin.addDirectoryItem(handle, row['file'], li, isFolder=folder)
-    # Do not mark a failed request as an authoritative empty successful folder/cache.
-    xbmcplugin.endOfDirectory(handle, succeeded=bool(rows) or not failures, cacheToDisc=False)
+
+
+def serve(handle, mode):
+    import xbmc
+    import xbmcaddon
+    import xbmcgui
+    import xbmcplugin
+    # Kodi waits for exactly one endOfDirectory per plugin call, whatever happens below.
+    succeeded = False
+    try:
+        addon = xbmcaddon.Addon()
+        if mode == 'settings':
+            addon.openSettings()
+            succeeded = True
+        elif mode == 'continue':
+            rows, failures = load_rows(xbmc, addon)
+            xbmcplugin.setContent(handle, 'episodes')
+            add_items(xbmcgui, xbmcplugin, handle, rows)
+            # Do not mark a failed request as an authoritative empty successful folder/cache.
+            succeeded = bool(rows) or not failures
+    except Exception:
+        xbmc.log('[Bingie Companion] Continue Watching failed:\n' + traceback.format_exc(), xbmc.LOGERROR)
+        succeeded = False
+    finally:
+        xbmcplugin.endOfDirectory(handle, succeeded=succeeded, cacheToDisc=False)

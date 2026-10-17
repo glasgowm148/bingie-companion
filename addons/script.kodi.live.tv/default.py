@@ -1,7 +1,7 @@
 import sys, xbmc
 mode = sys.argv[1] if len(sys.argv) > 1 else "back"
 if mode not in ("switch-account", "profiles", "wait-profile-switch", "finish-profile-switch",
-                "restart-current", "browse-bbc-show", "mark-bbc-watched", "rebuild-navigation",
+                "restart-current", "rebuild-navigation",
                 "bbc", "refresh", "setup", "day", "guide", "home", "back"):
     raise SystemExit("Unknown navigation action")
 if mode in ("switch-account", "profiles"):
@@ -37,27 +37,6 @@ if mode == "restart-current":
         restart(current)
     else:
         xbmc.log("[Profile Switch] Restart into the current profile skipped", xbmc.LOGINFO)
-    raise SystemExit
-if mode in ("browse-bbc-show", "mark-bbc-watched"):
-    import re
-    from urllib.parse import urlparse, parse_qs, urlencode
-    # Capture the selected item's URL before closing its info dialog. Home
-    # widgets may lose custom ListItem properties while retaining this URL.
-    target = sys.argv[2] if len(sys.argv) > 2 else xbmc.getInfoLabel("ListItem.FileNameAndPath")
-    parts = urlparse(target)
-    query = parse_qs(parts.query)
-    parent_url = query.get("url", [""])[0]
-    parent = urlparse(parent_url)
-    if parts.scheme != "plugin" or parts.netloc != "plugin.video.iplayerwww" or parent.scheme != "https" or parent.hostname != "www.bbc.co.uk" or not re.fullmatch(r"/iplayer/episodes?/[a-zA-Z0-9]+(?:/[^,]*)?", parent.path):
-        raise SystemExit
-    if mode == "browse-bbc-show":
-        target = "plugin://plugin.video.iplayerwww/?" + urlencode({"mode": "140", "url": parent_url})
-        xbmc.executebuiltin("Dialog.Close(12003,true)")
-        xbmc.executebuiltin("ActivateWindow(Videos," + target + ",return)")
-    elif "/iplayer/episode/" in parent.path:
-        target = "plugin://plugin.video.iplayerwww/?" + urlencode({"mode": "142", "url": parent_url, "name": query.get("name", [""])[0], "state": "watched"})
-        xbmc.executebuiltin("RunPlugin(" + target + ")")
-        xbmc.executebuiltin("Dialog.Close(12003,true)")
     raise SystemExit
 if mode == "rebuild-navigation":
     import xbmcgui

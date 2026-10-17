@@ -13,11 +13,15 @@ import xbmc
 import profile_transition as transition
 import xbmcgui
 import xbmcvfs
-from profile_restart import required as restart_required, restart as restart_profile
+from profile_restart import (required as restart_required, restart as restart_profile,
+                             preflight as restart_preflight)
 
 PROPERTY = 'KodiNavigation.ProfileSwitch'
 SETTINGS = {'services.webserver': xbmc.SERVER_WEBSERVER,
             'services.esenabled': xbmc.SERVER_JSONRPCSERVER}
+# An add-on takes part in the drain only if it ships this module (it then acknowledges shutdown).
+OPT_IN, OPT_IN_DEPTH, OPT_IN_ENTRIES = 'profile_transition.py', 4, 2000
+ADDON_ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]*$')
 
 
 def rpc(method, params):
@@ -42,10 +46,21 @@ def restore_pvr(cancelled=False):
     path = pvr_journal_path()
     if not os.path.isfile(path): return True
     with open(path, encoding='utf-8') as stream: saved = json.load(stream)
-    if saved.get('enabled') is not True: raise ValueError('Invalid PVR switch journal')
+    # Journals written before 1.3.1 name no add-ons: they only ever disabled IPTV Simple.
+    clients = saved.get('addons', ['pvr.iptvsimple'])
+    if (saved.get('enabled') is not True or not isinstance(clients, list)
+            or not all(isinstance(aid, str) and ADDON_ID.match(aid) for aid in clients)):
+        raise ValueError('Invalid PVR switch journal')
     if not cancelled and saved.get('pid') == os.getpid() and saved.get('target') != xbmc.getInfoLabel('System.ProfileName') and time.time() - saved.get('created', 0) < 120:
         return False
-    rpc('Addons.SetAddonEnabled', {'addonid': 'pvr.iptvsimple', 'enabled': True})
+    failed = []
+    for aid in clients:
+        try:
+            rpc('Addons.SetAddonEnabled', {'addonid': aid, 'enabled': True})
+        except RuntimeError:
+            failed.append(aid)
+    if failed:
+        raise RuntimeError('Could not re-enable ' + ', '.join(failed))  # journal kept for a retry
     os.unlink(path)
     xbmc.log('[Profile Switch] Destination Live TV restored', xbmc.LOGINFO)
     return True
@@ -77,9 +92,19 @@ def last_pvr_manager_state(stream, size):
     return None
 
 
+def enabled_pvr_clients():
+    """IDs of the enabled PVR client add-ons (any client, not one particular PVR)."""
+    try:
+        addons = rpc('Addons.GetAddons', {'type': 'kodi.pvrclient', 'enabled': True}).get('addons') or []
+    except RuntimeError:
+        return []
+    return sorted({a.get('addonid') for a in addons if isinstance(a, dict)
+                   and isinstance(a.get('addonid'), str) and ADDON_ID.match(a['addonid'])})
+
+
 def quiesce_pvr(target):
-    details = rpc('Addons.GetAddonDetails', {'addonid': 'pvr.iptvsimple', 'properties': ['enabled']})['addon']
-    if not details['enabled']: return
+    clients = enabled_pvr_clients()
+    if not clients: return
     log = xbmcvfs.translatePath('special://logpath/kodi.log')
     # An enabled addon may still be creating its native client on a worker.
     # Disabling during Starting aborts creation while GUIInfo still owns groups.
@@ -106,10 +131,12 @@ def quiesce_pvr(target):
     path = pvr_journal_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path + '.tmp', 'w', encoding='utf-8') as stream:
-        json.dump({'enabled': True, 'pid': os.getpid(), 'target': target, 'created': time.time()}, stream)
+        json.dump({'enabled': True, 'addons': clients, 'pid': os.getpid(), 'target': target,
+                   'created': time.time()}, stream)
         stream.flush(); os.fsync(stream.fileno())
     os.replace(path + '.tmp', path)
-    rpc('Addons.SetAddonEnabled', {'addonid': 'pvr.iptvsimple', 'enabled': False})
+    for aid in clients:
+        rpc('Addons.SetAddonEnabled', {'addonid': aid, 'enabled': False})
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
         with open(log, 'rb') as stream:
@@ -184,6 +211,52 @@ def service_paths():
     return sorted(paths, key=lambda path: 'plugin.video.tmdb.bingie.helper' in path)
 
 
+def addon_id(service):
+    """The ID of the add-on installed under special://home/addons that owns ``service``, or None."""
+    home = xbmcvfs.translatePath('special://home/addons/').replace('\\', '/').rstrip('/') + '/'
+    path = service.replace('\\', '/')
+    if not path.startswith(home):
+        return None
+    aid = path[len(home):].split('/', 1)[0]
+    return aid if ADDON_ID.match(aid) else None
+
+
+def opted_in(aid):
+    """True if the installed add-on ships profile_transition.py (bounded depth and entry count)."""
+    root = os.path.join(xbmcvfs.translatePath('special://home/addons/'), aid)
+    seen = 0
+    for folder, folders, files in os.walk(root):
+        if OPT_IN in files:
+            return True
+        seen += len(folders) + len(files)
+        depth = os.path.relpath(folder, root).count(os.sep) + (folder != root)
+        if seen > OPT_IN_ENTRIES:
+            return False
+        folders[:] = [] if depth >= OPT_IN_DEPTH else sorted(
+            name for name in folders if not name.startswith('.') and name != '__pycache__')
+    return False
+
+
+def participants(paths):
+    """Running service add-ons that opted in to the cooperative drain; others are not awaited."""
+    found = []
+    for aid in sorted({addon_id(path) for path in paths} - {None}):
+        if opted_in(aid):
+            found.append(aid)
+    return found
+
+
+def restart_participants(required):
+    # Enabling through Kodi's add-on manager supplies the original add-on
+    # context; RunScript(library_path) loses it for multi-extension add-ons.
+    for aid in required:
+        for enabled in (False, True):
+            try:
+                rpc('Addons.SetAddonEnabled', {'addonid': aid, 'enabled': enabled})
+            except Exception as error:
+                xbmc.log('[Profile Switch] Restarting %s failed: %s' % (aid, error), xbmc.LOGERROR)
+
+
 def save_remote_preferences(settings, profile=None):
     # Restore the saved preferences for the NEXT profile load, without
     # restarting listeners while the outgoing profile is being dismantled.
@@ -250,10 +323,10 @@ def finish_switch():
 
 def restart_with_drain(target):
     """Cancel cooperative Python work while the GUI still runs, then perform full Stop."""
+    # Profile index, lock, launcher token and helper files: refuse before anything is stopped.
+    restart_preflight(target)
     paths = service_paths()
-    participants = ('service.kodi.addonadmin', 'service.subtitles.a4ksubtitles',
-                    'script.xbmcbackup', 'plugin.video.tmdb.bingie.helper', 'plugin.video.pov')
-    required = [aid for aid in participants if any('/' + aid + '/' in path for path in paths)]
+    required = participants(paths)
     window = xbmcgui.Window(10000)
     if xbmcgui.getCurrentWindowId() != 10000:
         prepare_home()
@@ -279,23 +352,14 @@ def restart_with_drain(target):
         xbmc.log('[Profile Switch] Cooperative background drain complete before restart', xbmc.LOGINFO)
         restart_profile(target)
     except Exception:
-        completed = [path for path in paths if any(transition.is_drained(aid) and '/' + aid + '/' in path
-                                                    for aid in participants)]
-        # Recovery must reach every drained add-on: one failed call must not leave the
-        # rest stopped (or an add-on disabled, which Kodi keeps across restarts).
+        # Recovery must reach every opted-in add-on: one failed call must not leave the
+        # rest stopped (or an add-on disabled, which Kodi keeps across restarts). Add-ons
+        # that never opted in were not asked to stop and are left alone.
         try:
             restore_remote_control(cancelled=True)
         except Exception as error:
             xbmc.log('[Profile Switch] Restoring remote control failed: %s' % error, xbmc.LOGERROR)
-        # Enabling through Kodi's add-on manager supplies the original add-on
-        # context; RunScript(library_path) loses it for multi-extension add-ons.
-        for aid in participants:
-            if aid in required or any('/' + aid + '/' in path for path in completed):
-                for enabled in (False, True):
-                    try:
-                        rpc('Addons.SetAddonEnabled', {'addonid': aid, 'enabled': enabled})
-                    except Exception as error:
-                        xbmc.log('[Profile Switch] Restarting %s failed: %s' % (aid, error), xbmc.LOGERROR)
+        restart_participants(required)
         raise
 
 
@@ -316,6 +380,7 @@ def switch(target=None):
         restart_with_drain(target)
         return
     paths = service_paths()
+    required = participants(paths)
     path = journal_path()
     if os.path.isfile(path):
         restore_remote_control()
@@ -349,7 +414,7 @@ def switch(target=None):
         window.setProperty('TMDbBingieHelper.ServiceStop', 'True')
         # Native StopScript holds GUI locks. Let the helper release its Player
         # callbacks while the GUI can still process them, then stop interpreters.
-        if any('plugin.video.tmdb.bingie.helper' in service for service in paths):
+        if 'plugin.video.tmdb.bingie.helper' in required:
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline:
                 if window.getProperty('TMDbBingieHelper.ServiceDrained') == 'True':
@@ -357,9 +422,6 @@ def switch(target=None):
                 xbmc.sleep(50)
 
         xbmc.log('[Profile Switch] Direct switch to %s; draining %s services and pending playback' % (target, len(paths)), xbmc.LOGINFO)
-        required = [aid for aid in ('service.kodi.addonadmin', 'service.subtitles.a4ksubtitles',
-                    'script.xbmcbackup', 'plugin.video.tmdb.bingie.helper', 'plugin.video.pov')
-                    if any('/' + aid + '/' in service for service in paths)]
         deadline = time.monotonic() + 20
         quiet_since = None
         while time.monotonic() < deadline:
@@ -397,8 +459,17 @@ def switch(target=None):
         xbmc.executebuiltin('RunScript(script.kodi.live.tv,wait-profile-switch)')
     except Exception:
         xbmc.executebuiltin('CancelAlarm(KodiNavigationSwitch,silent)')
-        completed = [service for service in paths if any(transition.is_drained(aid) and '/' + aid + '/' in service for aid in ('service.kodi.addonadmin', 'service.subtitles.a4ksubtitles', 'script.xbmcbackup', 'plugin.video.tmdb.bingie.helper', 'plugin.video.pov'))]
-        restore_remote_control(cancelled=True)
+        completed = [service for service in paths
+                     if addon_id(service) in required and transition.is_drained(addon_id(service))]
+        # Recovery must not stop at the first failure: restore what it can, then restart
+        # each drained service independently (as the relaunch path does).
+        try:
+            restore_remote_control(cancelled=True)
+        except Exception as error:
+            xbmc.log('[Profile Switch] Restoring remote control failed: %s' % error, xbmc.LOGERROR)
         for service in completed:
-            xbmc.executebuiltin('RunScript("%s")' % service)
+            try:
+                xbmc.executebuiltin('RunScript("%s")' % service)
+            except Exception as error:
+                xbmc.log('[Profile Switch] Restarting %s failed: %s' % (service, error), xbmc.LOGERROR)
         raise

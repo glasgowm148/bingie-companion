@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addon id="script.bingie.companion" name="Bingie Companion" version="0.1.1" provider-name="glasgowm148">
-  <requires><import addon="xbmc.python" version="3.0.0" /></requires>
+<addon id="script.bingie.companion" name="Bingie Companion" version="0.1.2" provider-name="glasgowm148">
+  <requires><import addon="xbmc.python" version="3.0.1" /></requires>
   <extension point="xbmc.python.script" library="default.py" />
   <extension point="xbmc.python.pluginsource" library="default.py"><provides>video</provides></extension>
   <extension point="xbmc.addon.metadata">

@@ -28,20 +28,29 @@ def target_index(path, target):
     return names.index(target)
 
 
-def restart(target):
+def preflight(target):
+    """Cheap, read-only checks that refuse a relaunch before any service is asked to stop."""
     profiles = xbmcvfs.translatePath('special://masterprofile/profiles.xml')
     index = target_index(profiles, target)
     folder = xbmcvfs.translatePath('special://masterprofile/addon_data/script.kodi.live.tv')
-    os.makedirs(folder, exist_ok=True)
-    result = os.path.join(folder, 'profile-restart-result.json')
     token = os.path.join(folder, 'profile-handoff-token')
     if not os.path.isfile(token):
         raise RuntimeError('Account switch launcher has not been configured')
-    if os.path.isfile(result): os.unlink(result)
     resources = os.path.join(os.path.dirname(__file__), 'profile_restart')
     script, dex = os.path.join(resources, 'relaunch.sh'), os.path.join(resources, 'classes.dex')
     if not os.path.isfile(script) or not os.path.isfile(dex):
         raise RuntimeError('Profile relaunch helper is missing')
+    return {'profiles': profiles, 'index': index, 'folder': folder, 'token': token,
+            'script': script, 'dex': dex}
+
+
+def restart(target):
+    checked = preflight(target)
+    profiles, index, folder = checked['profiles'], checked['index'], checked['folder']
+    token, script, dex = checked['token'], checked['script'], checked['dex']
+    os.makedirs(folder, exist_ok=True)
+    result = os.path.join(folder, 'profile-restart-result.json')
+    if os.path.isfile(result): os.unlink(result)
     window = xbmcgui.Window(10000)
     window.setProperty('KodiNavigation.ProfileSwitch', str(time.time()))
     window.setProperty('KodiNavigation.SwitchTarget', target)
