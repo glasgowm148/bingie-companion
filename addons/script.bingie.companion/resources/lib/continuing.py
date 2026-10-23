@@ -7,8 +7,14 @@ from .common import rpc
 
 def allowed_source(value):
     try:
+        if not isinstance(value, str) or not value.strip():
+            return False
         parsed = urlsplit(value)
-        return parsed.scheme in ('plugin', 'videodb') and not parsed.username and not parsed.password
+        # A bare ``plugin://``/``videodb://`` would ask Kodi to resolve an
+        # unspecified handler and can produce an unbounded home listing.
+        return (parsed.scheme in ('plugin', 'videodb') and
+                bool(parsed.netloc or parsed.path) and
+                not parsed.username and not parsed.password)
     except ValueError:
         return False
 
@@ -28,7 +34,15 @@ def item_key(item):
         identity = ('title', str(item.get('showtitle') or item.get('title') or item.get('label') or '').casefold())
     if not identity[1]:
         return ('file', item.get('file'))
-    return identity + (item.get('season'), item.get('episode'))
+    # JSON-RPC extensions occasionally return null, strings, or arrays here.
+    # Keep malformed values from making the de-duplication dictionary fail.
+    def hashable(value):
+        try:
+            hash(value)
+        except TypeError:
+            return repr(value)
+        return value
+    return identity + (hashable(item.get('season')), hashable(item.get('episode')))
 
 
 def merge(rows):
@@ -36,7 +50,9 @@ def merge(rows):
     found, order = {}, []
     for items in rows:
         for item in items:
-            if not item.get('file') or (item.get('playcount', 0) and not resume_position(item)):
+            if not isinstance(item, dict) or not isinstance(item.get('file'), str) or not item['file']:
+                continue
+            if item.get('playcount', 0) and not resume_position(item):
                 continue
             key = item_key(item)
             if key not in found:
@@ -61,11 +77,17 @@ def load_rows(xbmc, addon):
         try:
             # Kodi applies ``limits`` after the source add-on has built its whole listing: this caps
             # only the size of the reply, not the work done by that add-on or the request's duration.
-            rows.append(rpc(xbmc, 'Files.GetDirectory', directory=source, media='video',
+            result = rpc(xbmc, 'Files.GetDirectory', directory=source, media='video',
                             limits={'start': 0, 'end': 100},
                             properties=['title', 'showtitle', 'season', 'episode', 'playcount',
-                                        'resume', 'art', 'uniqueid']).get('files', []))
-        except RuntimeError:
+                                        'resume', 'art', 'uniqueid'])
+            if not isinstance(result, dict):
+                raise ValueError('Invalid directory result')
+            files = result.get('files', [])
+            if not isinstance(files, list) or any(not isinstance(item, dict) for item in files):
+                raise ValueError('Invalid directory entries')
+            rows.append(files)
+        except (RuntimeError, ValueError, TypeError, AttributeError):
             failures += 1
     return merge(rows), failures
 

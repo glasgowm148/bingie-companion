@@ -198,8 +198,14 @@ class ContinueWatchingTests(unittest.TestCase):
         self.assertEqual(continuing.load_rows(kodi, addon()), ([], 0))
         self.assertEqual(kodi.calls, [])
         for source in ('https://example.invalid/history', 'http://user:secret@example.invalid/',
-                       'file:///other-profile/history', 'special://masterprofile/history'):
+                       'file:///other-profile/history', 'special://masterprofile/history',
+                       'plugin://', 'videodb://'):
             self.assertFalse(continuing.allowed_source(source))
+
+    def test_malformed_rows_are_ignored_without_breaking_other_items(self):
+        valid = {'title': 'Example', 'season': 1, 'episode': 2, 'file': 'plugin://a/'}
+        malformed = {'title': 'Broken', 'season': [], 'episode': {}, 'file': 'plugin://b/'}
+        self.assertEqual(continuing.merge([[None, malformed, valid]]), [malformed, valid])
 
     def test_resumable_duplicate_wins_and_original_playback_url_survives(self):
         a = {'showtitle': 'Example', 'season': 1, 'episode': 2, 'file': 'plugin://a/?play=original'}
@@ -270,6 +276,28 @@ class ServeTests(unittest.TestCase):
         plugin = FakePlugin(kodi, {'source1': 'plugin://a/', 'source2': 'plugin://b/'})
         self.assertEqual(plugin.serve(), [(7, True)])
         self.assertEqual(plugin.items, ['plugin://b/1'])
+
+    def test_malformed_source_does_not_erase_a_healthy_source(self):
+        malformed = ('not json', 'null', '[]', '{"result": null}',
+                     '{"result": {"files": null}}', '{"result": {"files": {}}}',
+                     '{"result": {"files": [null]}}')
+        for reply in malformed:
+            with self.subTest(reply=reply):
+                kodi = Kodi(replies={'plugin://b/': listing('plugin://b/1')})
+                execute = kodi.executeJSONRPC
+                kodi.executeJSONRPC = lambda raw: (
+                    reply if json.loads(raw)['params']['directory'] == 'plugin://a/' else execute(raw))
+                plugin = FakePlugin(kodi, {'source1': 'plugin://a/', 'source2': 'plugin://b/'})
+                self.assertEqual(plugin.serve(), [(7, True)])
+                self.assertEqual(plugin.items, ['plugin://b/1'])
+                self.assertFalse(plugin.log.called)
+
+    def test_malformed_only_source_reports_failure_once(self):
+        kodi = Kodi()
+        kodi.executeJSONRPC = lambda raw: '{"result": {"files": null}}'
+        plugin = FakePlugin(kodi, {'source1': 'plugin://a/'})
+        self.assertEqual(plugin.serve(), [(7, False)])
+        self.assertEqual(plugin.items, [])
 
     def test_exception_mid_listing_still_ends_the_directory_exactly_once(self):
         kodi = Kodi(replies={'plugin://b/': listing('plugin://b/1', 'plugin://b/2', 'plugin://b/3')})

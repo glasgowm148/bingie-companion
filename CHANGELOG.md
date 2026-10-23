@@ -1,5 +1,10 @@
 # Changes
 
+## 0.1.3 beta candidate — 2026-10-23
+
+- Continue Watching rejects empty source routes and malformed directory responses without losing a healthy source. Invalid episode identifiers no longer crash row deduplication.
+- Document offline tests and deterministic package verification.
+
 ## 0.1.2 beta candidate — 2026-10-17
 
 Kodi companion `script.bingie.companion` 0.1.2:

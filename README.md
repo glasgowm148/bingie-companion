@@ -1,5 +1,7 @@
 # Bingie Companion
 
+Source candidate: **0.1.3**. The installation links below refer to the existing 0.1.2 release; local builds use the version in `addon.xml`.
+
 Optional, reusable companions for [Bingie Experience](https://github.com/glasgowm148/skin.bingie).
 The skin owns its controls; these packages provide Android voice input, guide navigation and
 profile-local widgets. No accounts, channel lists, personal profiles or content providers are bundled.
@@ -117,6 +119,10 @@ Python 3.9+; no third-party Python packages are needed for unit tests or Kodi ZI
 python -m unittest discover -s tests -q
 python scripts/build.py
 ```
+
+The build is deterministic: it recreates the two Kodi ZIPs in `dist/` and does not contact Kodi
+or the network. Run it after changing add-on files, then inspect the generated checksums before
+publishing. Unit tests use Kodi fakes only; they do not prove behavior on a real Shield.
 
 The Android build also needs a JDK 11+ and Android SDK build-tools 34.0.0 / platform android-30:
 
