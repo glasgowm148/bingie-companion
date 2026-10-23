@@ -285,7 +285,7 @@ class ServeTests(unittest.TestCase):
             with self.subTest(reply=reply):
                 kodi = Kodi(replies={'plugin://b/': listing('plugin://b/1')})
                 execute = kodi.executeJSONRPC
-                kodi.executeJSONRPC = lambda raw: (
+                kodi.executeJSONRPC = lambda raw, reply=reply, execute=execute: (
                     reply if json.loads(raw)['params']['directory'] == 'plugin://a/' else execute(raw))
                 plugin = FakePlugin(kodi, {'source1': 'plugin://a/', 'source2': 'plugin://b/'})
                 self.assertEqual(plugin.serve(), [(7, True)])
